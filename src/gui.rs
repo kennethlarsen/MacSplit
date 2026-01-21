@@ -2,6 +2,7 @@ use crate::splits::SplitsFile;
 use crate::watcher::{LogWatcher, WatchEvent};
 use eframe::egui;
 use livesplit_core::{Run, Segment, Timer, TimerPhase, TimeSpan};
+use serde::Deserialize;
 use std::path::PathBuf;
 
 const DARK_BG: egui::Color32 = egui::Color32::from_rgb(20, 20, 25);
@@ -17,10 +18,89 @@ const TIME_GOLD: egui::Color32 = egui::Color32::from_rgb(255, 215, 0);
 const TIME_BLUE: egui::Color32 = egui::Color32::from_rgb(100, 149, 237);
 const ACCENT_COLOR: egui::Color32 = egui::Color32::from_rgb(139, 69, 255);
 
+#[derive(Debug, Clone, Deserialize)]
+struct GameConfig {
+    game: String,
+    log_location: String,
+}
+
+#[derive(Debug, Clone)]
+struct AvailableGame {
+    display_name: String,
+    folder_name: String,
+    config: GameConfig,
+}
+
+fn discover_autosplitters() -> Vec<AvailableGame> {
+    let mut games = Vec::new();
+
+    // Get the executable's directory or current directory
+    let autosplitters_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("autosplitters");
+
+    // Also check current working directory
+    let cwd_autosplitters = PathBuf::from("autosplitters");
+
+    for dir in [autosplitters_dir, cwd_autosplitters] {
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let config_path = path.join("config.json");
+                    let splits_path = path.join("splits.json");
+
+                    if config_path.exists() && splits_path.exists() {
+                        if let Ok(config_content) = std::fs::read_to_string(&config_path) {
+                            if let Ok(config) = serde_json::from_str::<GameConfig>(&config_content) {
+                                let folder_name = path
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy().to_string())
+                                    .unwrap_or_default();
+
+                                // Avoid duplicates
+                                if !games.iter().any(|g: &AvailableGame| g.folder_name == folder_name) {
+                                    games.push(AvailableGame {
+                                        display_name: config.game.clone(),
+                                        folder_name,
+                                        config,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    games
+}
+
+fn get_autosplitters_base_dir() -> PathBuf {
+    // Check current working directory first
+    let cwd_autosplitters = PathBuf::from("autosplitters");
+    if cwd_autosplitters.exists() {
+        return cwd_autosplitters;
+    }
+
+    // Fall back to executable directory
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("autosplitters")
+}
+
 pub struct LiveSplitApp {
     timer: Timer,
     splits_file: SplitsFile,
     watcher: Option<LogWatcher>,
+    available_games: Vec<AvailableGame>,
+    selected_game_index: Option<usize>,
+    pending_game_change: Option<usize>,
 }
 
 impl LiveSplitApp {
@@ -28,9 +108,36 @@ impl LiveSplitApp {
         splits_path: Option<PathBuf>,
         watch_path: Option<PathBuf>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let splits_file = match splits_path {
-            Some(ref path) => SplitsFile::load(path)?,
-            None => SplitsFile::default_run(),
+        let available_games = discover_autosplitters();
+
+        let (splits_file, watcher, selected_game_index) = if splits_path.is_some() || watch_path.is_some() {
+            // Use provided paths
+            let splits_file = match splits_path {
+                Some(ref path) => SplitsFile::load(path)?,
+                None => SplitsFile::default_run(),
+            };
+
+            let watcher = if let Some(ref path) = watch_path {
+                let split_triggers: Vec<Option<String>> = splits_file
+                    .splits
+                    .iter()
+                    .map(|s| s.trigger.clone())
+                    .collect();
+
+                Some(LogWatcher::new(
+                    path.clone(),
+                    splits_file.start_trigger.clone(),
+                    splits_file.reset_trigger.clone(),
+                    split_triggers,
+                )?)
+            } else {
+                None
+            };
+
+            (splits_file, watcher, None)
+        } else {
+            // Default run, no game selected
+            (SplitsFile::default_run(), None, None)
         };
 
         let mut run = Run::new();
@@ -49,28 +156,65 @@ impl LiveSplitApp {
 
         let timer = Timer::new(run).map_err(|_| "Failed to create timer")?;
 
-        let watcher = if let Some(ref path) = watch_path {
-            let split_triggers: Vec<Option<String>> = splits_file
-                .splits
-                .iter()
-                .map(|s| s.trigger.clone())
-                .collect();
-
-            Some(LogWatcher::new(
-                path.clone(),
-                splits_file.start_trigger.clone(),
-                splits_file.reset_trigger.clone(),
-                split_triggers,
-            )?)
-        } else {
-            None
-        };
-
         Ok(Self {
             timer,
             splits_file,
             watcher,
+            available_games,
+            selected_game_index,
+            pending_game_change: None,
         })
+    }
+
+    fn load_game(&mut self, game_index: usize) -> Result<(), Box<dyn std::error::Error>> {
+        let game = &self.available_games[game_index];
+        let base_dir = get_autosplitters_base_dir();
+        let game_dir = base_dir.join(&game.folder_name);
+
+        let splits_path = game_dir.join("splits.json");
+        let splits_file = SplitsFile::load(&splits_path)?;
+
+        // Resolve log location (relative to home directory)
+        let home_dir = dirs_next::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+        let log_path = home_dir.join(&game.config.log_location);
+
+        // Create watcher
+        let split_triggers: Vec<Option<String>> = splits_file
+            .splits
+            .iter()
+            .map(|s| s.trigger.clone())
+            .collect();
+
+        let watcher = LogWatcher::new(
+            log_path,
+            splits_file.start_trigger.clone(),
+            splits_file.reset_trigger.clone(),
+            split_triggers,
+        ).ok();
+
+        // Create new timer
+        let mut run = Run::new();
+        run.set_game_name(splits_file.game.as_str());
+        run.set_category_name(splits_file.category.as_str());
+
+        for split in &splits_file.splits {
+            let mut segment = Segment::new(&split.name);
+            if let Some(best_ms) = split.best_time_ms {
+                let time = livesplit_core::Time::new()
+                    .with_real_time(Some(TimeSpan::from_milliseconds(best_ms as f64)));
+                segment.set_best_segment_time(time);
+            }
+            run.push_segment(segment);
+        }
+
+        let timer = Timer::new(run).map_err(|_| "Failed to create timer")?;
+
+        self.timer = timer;
+        self.splits_file = splits_file;
+        self.watcher = watcher;
+        self.selected_game_index = Some(game_index);
+
+        Ok(())
     }
 
     fn poll_watcher(&mut self) {
@@ -149,6 +293,11 @@ impl LiveSplitApp {
 
 impl eframe::App for LiveSplitApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Handle pending game change
+        if let Some(game_index) = self.pending_game_change.take() {
+            let _ = self.load_game(game_index);
+        }
+
         self.poll_watcher();
 
         // Request continuous repaints for timer updates
@@ -202,6 +351,41 @@ impl eframe::App for LiveSplitApp {
             .frame(egui::Frame::none().fill(DARK_BG))
             .show(ctx, |ui| {
                 ui.style_mut().visuals.override_text_color = Some(TEXT_WHITE);
+
+                // Game selector dropdown
+                if !self.available_games.is_empty() {
+                    egui::Frame::none()
+                        .fill(HEADER_BG)
+                        .inner_margin(egui::Margin::symmetric(12.0, 8.0))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new("Game:")
+                                        .size(12.0)
+                                        .color(TEXT_GRAY),
+                                );
+
+                                let current_selection = self
+                                    .selected_game_index
+                                    .map(|i| self.available_games[i].display_name.clone())
+                                    .unwrap_or_else(|| "Select a game...".to_string());
+
+                                egui::ComboBox::from_id_salt("game_selector")
+                                    .selected_text(&current_selection)
+                                    .width(200.0)
+                                    .show_ui(ui, |ui| {
+                                        for (i, game) in self.available_games.iter().enumerate() {
+                                            let is_selected = self.selected_game_index == Some(i);
+                                            if ui.selectable_label(is_selected, &game.display_name).clicked() {
+                                                self.pending_game_change = Some(i);
+                                            }
+                                        }
+                                    });
+                            });
+                        });
+
+                    ui.add_space(2.0);
+                }
 
                 // Header - Game and Category
                 egui::Frame::none()
@@ -370,7 +554,7 @@ impl eframe::App for LiveSplitApp {
                             if self.watcher.is_some() {
                                 ui.add_space(4.0);
                                 ui.label(
-                                    egui::RichText::new("⚡ Auto-split active")
+                                    egui::RichText::new("Auto-split active")
                                         .size(11.0)
                                         .color(ACCENT_COLOR),
                                 );
@@ -389,14 +573,14 @@ pub fn run_gui(
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([300.0, 450.0])
-            .with_min_inner_size([250.0, 300.0])
-            .with_title("AutoSplit Timer"),
+            .with_inner_size([300.0, 500.0])
+            .with_min_inner_size([250.0, 350.0])
+            .with_title("MacSplit"),
         ..Default::default()
     };
 
     eframe::run_native(
-        "AutoSplit Timer",
+        "MacSplit",
         options,
         Box::new(|_cc| Ok(Box::new(app))),
     )?;
