@@ -1,13 +1,1 @@
-    Blocking waiting for file lock on build directory
-   1.143382417s  INFO prepare_target{force=false package_id=MacSplit v0.1.0 (/Users/kenneth/Downloads/files-2) target="MacSplit"}: cargo::core::compiler::fingerprint: fingerprint dirty for MacSplit v0.1.0 (/Users/kenneth/Downloads/files-2)/Check { test: false }/TargetInner { name: "MacSplit", doc: true, ..: with_path("/Users/kenneth/Downloads/files-2/src/main.rs", Edition2021) }
-   1.143409417s  INFO prepare_target{force=false package_id=MacSplit v0.1.0 (/Users/kenneth/Downloads/files-2) target="MacSplit"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(Stale)
-   1.148056583s  INFO prepare_target{force=false package_id=dirs-next v2.0.0 target="dirs_next"}: cargo::core::compiler::fingerprint: fingerprint dirty for dirs-next v2.0.0/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("dirs_next", ["lib"], "/Users/kenneth/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/dirs-next-2.0.0/src/lib.rs", Edition2018) }
-   1.148071458s  INFO prepare_target{force=false package_id=dirs-next v2.0.0 target="dirs_next"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(Stale)
-   1.148411625s  INFO prepare_target{force=false package_id=dirs-sys-next v0.1.2 target="dirs_sys_next"}: cargo::core::compiler::fingerprint: fingerprint dirty for dirs-sys-next v0.1.2/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("dirs_sys_next", ["lib"], "/Users/kenneth/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/dirs-sys-next-0.1.2/src/lib.rs", Edition2018) }
-   1.148417833s  INFO prepare_target{force=false package_id=dirs-sys-next v0.1.2 target="dirs_sys_next"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(Stale)
-   1.169785042s  INFO prepare_target{force=false package_id=MacSplit v0.1.0 (/Users/kenneth/Downloads/files-2) target="MacSplit"}: cargo::core::compiler::fingerprint: fingerprint dirty for MacSplit v0.1.0 (/Users/kenneth/Downloads/files-2)/Check { test: true }/TargetInner { name: "MacSplit", doc: true, ..: with_path("/Users/kenneth/Downloads/files-2/src/main.rs", Edition2021) }
-   1.169796625s  INFO prepare_target{force=false package_id=MacSplit v0.1.0 (/Users/kenneth/Downloads/files-2) target="MacSplit"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(Stale)
-    Checking dirs-sys-next v0.1.2
-    Checking dirs-next v2.0.0
-    Checking MacSplit v0.1.0 (/Users/kenneth/Downloads/files-2)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.62s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.22s

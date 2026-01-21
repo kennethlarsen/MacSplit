@@ -2,7 +2,7 @@
   "game": "The Binding of Isaac: Rebirth",
   "category": "1 Character seeded",
   "start_trigger": "Start Room",
-  "reset_trigger": "RESET GAME",
+  "reset_trigger": "Saving PersistentGameData",
   "splits": [
     {
       "name": "B1",
@@ -26,6 +26,18 @@
     },
     {
       "name": "D2",
+      "trigger": "m_Stage"
+    },
+    {
+      "name": "Womb XL",
+      "trigger": "m_Stage"
+    },
+    {
+      "name": "Cathedral",
+      "trigger": "m_Stage"
+    },
+    {
+      "name": "Blue Baby",
       "trigger": "m_Stage"
     }
   ]
