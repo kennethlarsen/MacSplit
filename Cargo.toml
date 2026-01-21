@@ -1,5 +1,5 @@
 [package]
-name = "autosplit-timer"
+name = "MacSplit"
 version = "0.1.0"
 edition = "2021"
 

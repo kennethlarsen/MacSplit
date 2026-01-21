@@ -3,6 +3,19 @@
 version = 4
 
 [[package]]
+name = "MacSplit"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "crossterm",
+ "eframe",
+ "egui",
+ "livesplit-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ab_glyph"
 version = "0.2.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -461,19 +474,6 @@ name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
-
-[[package]]
-name = "autosplit-timer"
-version = "0.1.0"
-dependencies = [
- "clap",
- "crossterm",
- "eframe",
- "egui",
- "livesplit-core",
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "base64-simd"
