@@ -2,7 +2,7 @@
   "game": "The Binding of Isaac: Rebirth",
   "category": "1 Character seeded",
   "start_trigger": "Start Room",
-  "reset_trigger": "Saving PersistentGameData",
+  "reset_trigger": "qweqweqweqw",
   "splits": [
     {
       "name": "B1",
