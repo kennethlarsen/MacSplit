@@ -411,10 +411,22 @@ impl eframe::App for LiveSplitApp {
 
                 // Splits list
                 let run = self.timer.run();
+                let mut prev_split_time: Option<TimeSpan> = None;
                 for (i, split) in self.splits_file.splits.iter().enumerate() {
                     let segment = run.segment(i);
                     let split_time = segment.split_time().real_time;
                     let best_segment = segment.best_segment_time().real_time;
+
+                    // Calculate current segment time (time for this segment only)
+                    let current_segment_time = if let Some(split) = split_time {
+                        if let Some(prev) = prev_split_time {
+                            Some(TimeSpan::from_seconds(split.total_seconds() - prev.total_seconds()))
+                        } else {
+                            Some(split)
+                        }
+                    } else {
+                        None
+                    };
 
                     let is_current = i == current_split_idx && phase == TimerPhase::Running;
                     let is_completed = i < current_split_idx;
@@ -458,9 +470,9 @@ impl eframe::App for LiveSplitApp {
                                                 .monospace(),
                                         );
 
-                                        // Delta (if we have a best time to compare)
-                                        if let (Some(current), Some(best)) = (split_time, best_segment) {
-                                            let delta = current.total_seconds() - best.total_seconds();
+                                        // Delta: compare current segment time vs best segment time
+                                        if let (Some(current_seg), Some(best_seg)) = (current_segment_time, best_segment) {
+                                            let delta = current_seg.total_seconds() - best_seg.total_seconds();
                                             let delta_color = if delta < 0.0 {
                                                 TIME_GREEN
                                             } else if delta < 1.0 {
@@ -503,6 +515,11 @@ impl eframe::App for LiveSplitApp {
                                 });
                             });
                         });
+
+                    // Track previous split time for segment calculation
+                    if is_completed {
+                        prev_split_time = split_time;
+                    }
 
                     ui.add_space(1.0);
                 }
@@ -586,4 +603,239 @@ pub fn run_gui(
     )?;
 
     Ok(())
+}
+
+/// Calculate the segment time from cumulative split times
+///
+/// # Arguments
+/// * `current_split` - The cumulative time at the current split
+/// * `previous_split` - The cumulative time at the previous split (None for first segment)
+///
+/// # Returns
+/// The time for just this segment (current - previous)
+fn calculate_segment_time(current_split: Option<TimeSpan>, previous_split: Option<TimeSpan>) -> Option<TimeSpan> {
+    current_split.map(|current| {
+        if let Some(prev) = previous_split {
+            TimeSpan::from_seconds(current.total_seconds() - prev.total_seconds())
+        } else {
+            current
+        }
+    })
+}
+
+/// Calculate the delta between current segment time and best segment time
+///
+/// # Arguments
+/// * `current_segment` - The time for the current segment
+/// * `best_segment` - The best recorded time for this segment
+///
+/// # Returns
+/// The delta in seconds (positive = slower, negative = faster)
+fn calculate_delta(current_segment: Option<TimeSpan>, best_segment: Option<TimeSpan>) -> Option<f64> {
+    match (current_segment, best_segment) {
+        (Some(current), Some(best)) => Some(current.total_seconds() - best.total_seconds()),
+        _ => None,
+    }
+}
+
+/// Determine the color for a delta value
+///
+/// # Arguments
+/// * `delta` - The delta in seconds
+///
+/// # Returns
+/// Green if ahead (negative), Gold if close (0-1s behind), Red if behind (>1s)
+fn delta_color(delta: f64) -> egui::Color32 {
+    if delta < 0.0 {
+        TIME_GREEN
+    } else if delta < 1.0 {
+        TIME_GOLD
+    } else {
+        TIME_RED
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_calculate_segment_time_first_segment() {
+        // First segment: no previous split, so segment time = split time
+        let current = Some(TimeSpan::from_seconds(30.0));
+        let previous = None;
+
+        let result = calculate_segment_time(current, previous);
+
+        assert!(result.is_some());
+        assert!((result.unwrap().total_seconds() - 30.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_calculate_segment_time_subsequent_segment() {
+        // Second segment: split at 60s, previous at 30s, so segment = 30s
+        let current = Some(TimeSpan::from_seconds(60.0));
+        let previous = Some(TimeSpan::from_seconds(30.0));
+
+        let result = calculate_segment_time(current, previous);
+
+        assert!(result.is_some());
+        assert!((result.unwrap().total_seconds() - 30.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_calculate_segment_time_none_current() {
+        let current = None;
+        let previous = Some(TimeSpan::from_seconds(30.0));
+
+        let result = calculate_segment_time(current, previous);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_calculate_delta_faster_than_best() {
+        // Current segment: 25s, Best segment: 30s = -5s delta (faster)
+        let current = Some(TimeSpan::from_seconds(25.0));
+        let best = Some(TimeSpan::from_seconds(30.0));
+
+        let delta = calculate_delta(current, best);
+
+        assert!(delta.is_some());
+        assert!((delta.unwrap() - (-5.0)).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_calculate_delta_slower_than_best() {
+        // Current segment: 35s, Best segment: 30s = +5s delta (slower)
+        let current = Some(TimeSpan::from_seconds(35.0));
+        let best = Some(TimeSpan::from_seconds(30.0));
+
+        let delta = calculate_delta(current, best);
+
+        assert!(delta.is_some());
+        assert!((delta.unwrap() - 5.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_calculate_delta_equal_to_best() {
+        // Current segment: 30s, Best segment: 30s = 0s delta
+        let current = Some(TimeSpan::from_seconds(30.0));
+        let best = Some(TimeSpan::from_seconds(30.0));
+
+        let delta = calculate_delta(current, best);
+
+        assert!(delta.is_some());
+        assert!(delta.unwrap().abs() < 0.001);
+    }
+
+    #[test]
+    fn test_calculate_delta_no_best() {
+        // No best segment recorded
+        let current = Some(TimeSpan::from_seconds(30.0));
+        let best = None;
+
+        let delta = calculate_delta(current, best);
+
+        assert!(delta.is_none());
+    }
+
+    #[test]
+    fn test_delta_color_ahead() {
+        // Negative delta = ahead = green
+        assert_eq!(delta_color(-5.0), TIME_GREEN);
+        assert_eq!(delta_color(-0.1), TIME_GREEN);
+    }
+
+    #[test]
+    fn test_delta_color_slightly_behind() {
+        // 0 to 1 second behind = gold
+        assert_eq!(delta_color(0.0), TIME_GOLD);
+        assert_eq!(delta_color(0.5), TIME_GOLD);
+        assert_eq!(delta_color(0.99), TIME_GOLD);
+    }
+
+    #[test]
+    fn test_delta_color_behind() {
+        // More than 1 second behind = red
+        assert_eq!(delta_color(1.0), TIME_RED);
+        assert_eq!(delta_color(5.0), TIME_RED);
+        assert_eq!(delta_color(100.0), TIME_RED);
+    }
+
+    #[test]
+    fn test_full_run_scenario_all_segments_faster() {
+        // Simulate a run where all segments are faster than best
+        // Best times: 30s, 30s, 30s (segments)
+        // Current times: 25s, 25s, 25s (segments)
+        // Cumulative: 25s, 50s, 75s vs best cumulative would be 30s, 60s, 90s
+
+        let best_segments = vec![
+            TimeSpan::from_seconds(30.0),
+            TimeSpan::from_seconds(30.0),
+            TimeSpan::from_seconds(30.0),
+        ];
+
+        let current_splits = vec![
+            TimeSpan::from_seconds(25.0),  // Split 1: 25s cumulative
+            TimeSpan::from_seconds(50.0),  // Split 2: 50s cumulative
+            TimeSpan::from_seconds(75.0),  // Split 3: 75s cumulative
+        ];
+
+        let mut prev_split: Option<TimeSpan> = None;
+
+        for (i, &current_split) in current_splits.iter().enumerate() {
+            let segment_time = calculate_segment_time(Some(current_split), prev_split);
+            let delta = calculate_delta(segment_time, Some(best_segments[i]));
+
+            // All segments should be 5 seconds faster
+            assert!(delta.is_some());
+            assert!((delta.unwrap() - (-5.0)).abs() < 0.001,
+                "Segment {} delta should be -5.0, got {}", i, delta.unwrap());
+
+            // Color should be green (ahead)
+            assert_eq!(delta_color(delta.unwrap()), TIME_GREEN);
+
+            prev_split = Some(current_split);
+        }
+    }
+
+    #[test]
+    fn test_full_run_scenario_mixed_performance() {
+        // Simulate a run with mixed performance
+        // Best segments: 30s, 30s, 30s
+        // Current segments: 25s (fast), 35s (slow), 30s (same)
+        // Cumulative: 25s, 60s, 90s
+
+        let best_segments = vec![
+            TimeSpan::from_seconds(30.0),
+            TimeSpan::from_seconds(30.0),
+            TimeSpan::from_seconds(30.0),
+        ];
+
+        let current_splits = vec![
+            TimeSpan::from_seconds(25.0),  // Segment 1: 25s (5s ahead)
+            TimeSpan::from_seconds(60.0),  // Segment 2: 35s (5s behind)
+            TimeSpan::from_seconds(90.0),  // Segment 3: 30s (even)
+        ];
+
+        let expected_deltas = vec![-5.0, 5.0, 0.0];
+        let expected_colors = vec![TIME_GREEN, TIME_RED, TIME_GOLD];
+
+        let mut prev_split: Option<TimeSpan> = None;
+
+        for (i, &current_split) in current_splits.iter().enumerate() {
+            let segment_time = calculate_segment_time(Some(current_split), prev_split);
+            let delta = calculate_delta(segment_time, Some(best_segments[i]));
+
+            assert!(delta.is_some());
+            assert!((delta.unwrap() - expected_deltas[i]).abs() < 0.001,
+                "Segment {} delta should be {}, got {}", i, expected_deltas[i], delta.unwrap());
+
+            assert_eq!(delta_color(delta.unwrap()), expected_colors[i],
+                "Segment {} color mismatch", i);
+
+            prev_split = Some(current_split);
+        }
+    }
 }
