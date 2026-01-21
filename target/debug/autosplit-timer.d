@@ -1,0 +1,1 @@
+/Users/kenneth/Downloads/files-2/target/debug/autosplit-timer: /Users/kenneth/Downloads/files-2/src/main.rs /Users/kenneth/Downloads/files-2/src/splits.rs /Users/kenneth/Downloads/files-2/src/timer_app.rs /Users/kenneth/Downloads/files-2/src/watcher.rs

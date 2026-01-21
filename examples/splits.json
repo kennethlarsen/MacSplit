@@ -1,0 +1,32 @@
+{
+  "game": "The Binding of Isaac: Rebirth",
+  "category": "1 Character seeded",
+  "start_trigger": "Start Room",
+  "reset_trigger": "RESET GAME",
+  "splits": [
+    {
+      "name": "B1",
+      "trigger": "m_Stage"
+    },
+    {
+      "name": "B2",
+      "trigger": "m_Stage"
+    },
+    {
+      "name": "C1",
+      "trigger": "m_Stage"
+    },
+    {
+      "name": "C2",
+      "trigger": "m_Stage"
+    },
+    {
+      "name": "D1",
+      "trigger": "m_Stage"
+    },
+    {
+      "name": "D2",
+      "trigger": "m_Stage"
+    }
+  ]
+}

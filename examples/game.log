@@ -1,0 +1,17 @@
+# This is an example game log file
+# The timer watches for new lines containing trigger keywords
+# 
+# To test: run the timer with --watch game.log --splits splits.json
+# Then append lines to this file:
+#
+#   echo "FILE SELECT" >> game.log    # Starts timer
+#   echo "STAR GET BoB" >> game.log   # First split
+#   echo "STAR GET WF" >> game.log    # Second split
+#   etc.
+FILE SELECT
+start
+STAR GET BoB
+FILE SELECT
+STAR GET BoB
+STAR GET WF
+BOWSER DEFEATED
